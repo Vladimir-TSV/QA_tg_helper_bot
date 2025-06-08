@@ -62,16 +62,26 @@ Start_menu = [
     '2️⃣ Users_Gen', 
     '3️⃣ Card_Gen', 
     '4️⃣ Files_Gen',
-    '5️⃣ Словарик',
+    '5️⃣ Converters',
     '6️⃣ Security',
     '7️⃣ API Tools',
     '8️⃣ Test Design',
-    '9️⃣ Converters'
+    '9️⃣ Словарик'
 ]
 
 # Словарь терминов QA
 get_qa_definition = {
- 'абап': '(от англ. «ABAP», «Advanced Business Application Programming») — проприетарный внутренний язык программирования высокого уровня с синтаксисом, используемым в приложениях корпорации SAP',
+    'регресс': 'Проверка того, что новые изменения не сломали существующую функциональность',
+    'смоук': 'Быстрая проверка основных функций приложения после сборки',
+    'wq': 'сохранить и выйти (из vim)',
+    '-i': 'установить пакет (i - сокращение install)',
+    '.': 'Текущая директория',
+    '..': 'директория верхнего уровня',
+    '|': 'Pipe (конвеер)',
+    'баг': 'Ошибка в программе, вызывающая некорректное поведение',
+    'тест-кейс': 'Формализованное описание шагов для проверки определенной функциональности',
+    'чек-лист': 'Список пунктов для проверки без детальных шагов',
+    'абап': '(от англ. «ABAP», «Advanced Business Application Programming») — проприетарный внутренний язык программирования высокого уровня с синтаксисом, используемым в приложениях корпорации SAP',
     'абстрактная функция': '(или «чистая виртуальная функция», от англ. «abstract function») — это функция без определения, которую переопределяют дочерние классы',
     'ава': '🙂🙃(или «аватарка», от англ. «avatar») — графическое обозначение пользователя в Интернете (картинка/фото/изображение)',
     'авечка': 'звуковая карта Sound Blaster AWE32 на шине ISA, представленная Creative Technology в марте 1994 года',
@@ -2130,7 +2140,7 @@ JSON_SCHEMAS = {
             "phone": {"type": "string"},
             "address": {"type": "string"},
             "birthdate": {"type": "string", "format": "date"},
-            "gender": {"type": "string", "enum": ["male", "female", "other"]}
+            "gender": {"type": "string", "enum": ["male", "female"]}
         },
         "required": ["name", "email"]
     },
@@ -2152,8 +2162,8 @@ user_states = {}
 # Настройка команд бота
 try:
     bot.set_my_commands([
-        types.BotCommand('/start', 'перезапуск бота'),
-        types.BotCommand('/help', 'справка по функциях')
+        types.BotCommand('/start', 'Перезапуск бота'),
+        types.BotCommand('/help', 'Справка по функциях')
     ])
 except ApiTelegramException as e:
     logger.error(f"Ошибка при установке команд: {e}")
@@ -2176,8 +2186,54 @@ def safe_send_message(chat_id, text, **kwargs):
             return safe_send_message(chat_id, text, **kwargs)
         return None
 
+def generate_fake_users(count):
+    """Генерация тестовых пользователей"""
+    users = []
+    genders = ['male', 'female', 'other']
+    
+    for _ in range(count):
+        gender = faker.random.choice(genders)
+        first_name = faker.first_name_male() if gender == 'male' else faker.first_name_female()
+        last_name = faker.last_name_male() if gender == 'male' else faker.last_name_female()
+        
+        user = {
+            'name': f"{first_name} {last_name}",
+            'email': faker.email(),
+            'phone': f'+7{faker.msisdn()[3:]}',
+            'address': faker.address(),
+            'birthdate': faker.date_of_birth(minimum_age=18, maximum_age=70).isoformat(),
+            'gender': gender,
+            'username': faker.user_name(),
+            'job': faker.job(),
+            'company': faker.company()
+        }
+        users.append(user)
+    return users
+
+def generate_fake_card(card_type):
+    """Генерация тестовой карты"""
+    card_type_lower = card_type.lower()
+    
+    if card_type_lower == 'jcb':
+        jcb_prefix = faker.random_int(3528, 3589)
+        card_number = f"{jcb_prefix}" + faker.numerify('###########')
+    else:
+        card_number = faker.credit_card_number(card_type_lower)
+    
+    return {
+        'Номер': card_number,
+        'Срок': faker.credit_card_expire(),
+        'CVV': faker.credit_card_security_code(),
+        'Тип': card_type,
+        'Владелец': faker.name()
+    }
+
 @bot.message_handler(commands=['start', 'help'])
 def welcome(message):
+    """Главное меню бота"""
+    if message.chat.id in user_states:
+        del user_states[message.chat.id]
+    
     username = message.from_user.first_name
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(*Start_menu, row_width=3)
@@ -2198,9 +2254,14 @@ def welcome(message):
     
     safe_send_message(message.chat.id, text, reply_markup=markup)
 
-# 1. JSON Check (с улучшенной валидацией)
+# 1. JSON Check
 @bot.message_handler(func=lambda m: m.text == '1️⃣ JSON_Check')
 def handle_json_check(message):
+    """Обработчик проверки JSON"""
+    if message.text == 'Повторить':
+        handle_navigation(message)
+        return
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add("Без схемы", "Схема User", "Схема Product")
     markup.add("Назад")
@@ -2214,8 +2275,12 @@ def handle_json_check(message):
         bot.register_next_step_handler(msg, process_json_validation_type)
 
 def process_json_validation_type(message):
+    """Обработка выбора типа валидации JSON"""
     if message.text == 'Назад':
         welcome(message)
+        return
+    elif message.text == 'Повторить':
+        handle_navigation(message)
         return
         
     validation_type = {
@@ -2243,8 +2308,12 @@ def process_json_validation_type(message):
         bot.register_next_step_handler(msg, process_json)
 
 def process_json(message):
+    """Обработка и валидация JSON"""
     if message.text in ['Назад', '/start']:
         welcome(message)
+        return
+    elif message.text == 'Повторить':
+        handle_navigation(message)
         return
         
     user_state = user_states.get(message.chat.id, {})
@@ -2273,9 +2342,14 @@ def process_json(message):
     
     safe_send_message(message.chat.id, response, reply_markup=get_action_markup())
 
-# 2. Users Generator (с расширенными полями)
+# 2. Users Generator
 @bot.message_handler(func=lambda m: m.text == '2️⃣ Users_Gen')
 def handle_users_gen(message):
+    """Обработчик генерации пользователей"""
+    if message.text == 'Повторить':
+        handle_navigation(message)
+        return
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.row("1️⃣", "2️⃣", "5️⃣", "🔟")
     markup.add("Назад")
@@ -2289,8 +2363,12 @@ def handle_users_gen(message):
         bot.register_next_step_handler(msg, generate_users)
 
 def generate_users(message):
+    """Генерация пользователей"""
     if message.text == 'Назад':
         welcome(message)
+        return
+    elif message.text == 'Повторить':
+        handle_navigation(message)
         return
         
     count = {"1️⃣":1, "2️⃣":2, "5️⃣":5, "🔟":10}.get(message.text)
@@ -2299,60 +2377,52 @@ def generate_users(message):
         handle_users_gen(message)
         return
     
-    users = []
-    genders = ['male', 'female', 'other']
-    
-    for _ in range(count):
-        gender = faker.random.choice(genders)
-        first_name = faker.first_name_male() if gender == 'male' else faker.first_name_female()
-        last_name = faker.last_name_male() if gender == 'male' else faker.last_name_female()
-        
-        user = {
-            'name': f"{first_name} {last_name}",
-            'email': faker.email(),
-            'phone': f'+7{faker.msisdn()[3:]}',
-            'address': faker.address(),
-            'birthdate': faker.date_of_birth(minimum_age=18, maximum_age=70).isoformat(),
-            'gender': gender,
-            'username': faker.user_name(),
-            'job': faker.job(),
-            'company': faker.company()
-        }
-        users.append(user)
+    users = generate_fake_users(count)
     
     response = f"<b>Тестовые пользователи ({count}):</b>\n<code>{json.dumps(users, indent=2, ensure_ascii=False)}</code>"
     safe_send_message(message.chat.id, response, reply_markup=get_action_markup())
     
-    # Сохраняем состояние для команды "Повторить"
     user_states[message.chat.id] = {
         'last_command': 'users_gen',
         'count': count
     }
 
-# 3. Card Generator (без изменений, но с безопасной отправкой)
+# 3. Card Generator
 @bot.message_handler(func=lambda m: m.text == '3️⃣ Card_Gen')
 def handle_card_gen(message):
+    """Обработчик генерации карт"""
+    if message.text == 'Повторить':
+        handle_navigation(message)
+        return
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.row("VISA", "Mastercard")
     markup.row("Maestro", "JCB")
     markup.add("Назад")
     
-    safe_send_message(
+    msg = safe_send_message(
         message.chat.id,
         "💳 Выберите тип карты:",
         reply_markup=markup
     )
+    if msg:
+        bot.register_next_step_handler(msg, process_card_type)
 
-@bot.message_handler(func=lambda m: m.text in ["VISA", "Mastercard", "Maestro", "JCB"])
-def generate_card(message):
-    card_type = message.text.lower()
-    card_info = {
-        'Номер': faker.credit_card_number(card_type),
-        'Срок': faker.credit_card_expire(),
-        'CVV': faker.credit_card_security_code(),
-        'Тип': card_type,
-        'Владелец': faker.name()
-    }
+def process_card_type(message):
+    """Обработка выбора типа карты"""
+    if message.text == 'Назад':
+        welcome(message)
+        return
+    elif message.text == 'Повторить':
+        handle_navigation(message)
+        return
+        
+    if message.text not in ["VISA", "Mastercard", "Maestro", "JCB"]:
+        safe_send_message(message.chat.id, "Пожалуйста, выберите тип карты из меню")
+        handle_card_gen(message)
+        return
+    
+    card_info = generate_fake_card(message.text)
     
     response = (
         f"💳 <b>Тестовая карта {message.text}:</b>\n"
@@ -2363,12 +2433,17 @@ def generate_card(message):
     
     user_states[message.chat.id] = {
         'last_command': 'card_gen',
-        'card_type': card_type
+        'card_type': message.text.lower()
     }
 
-# 4. Files Generator с улучшениями
+# 4. Files Generator
 @bot.message_handler(func=lambda message: message.text == '4️⃣ Files_Gen')
 def handle_files_gen(message):
+    """Обработчик генерации файлов"""
+    if message.text == 'Повторить':
+        handle_navigation(message)
+        return
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(*formats, row_width=5)
     markup.add("Назад")
@@ -2382,11 +2457,12 @@ def handle_files_gen(message):
         bot.register_next_step_handler(msg, process_file_format)
 
 def process_file_format(message):
+    """Обработка выбора формата файла"""
     if message.text == 'Назад':
         welcome(message)
         return
     elif message.text == 'Повторить':
-        handle_files_gen(message)
+        handle_navigation(message)
         return
     
     if message.text not in formats:
@@ -2407,11 +2483,12 @@ def process_file_format(message):
         bot.register_next_step_handler(msg, process_file_unit, message.text)
 
 def process_file_unit(message, file_format):
+    """Обработка выбора единицы измерения"""
     if message.text == 'Назад':
         handle_files_gen(message)
         return
     elif message.text == 'Повторить':
-        process_file_format(message)
+        handle_navigation(message)
         return
     
     if message.text not in units_menu:
@@ -2431,11 +2508,12 @@ def process_file_unit(message, file_format):
         bot.register_next_step_handler(msg, process_file_size, file_format, message.text)
 
 def process_file_size(message, file_format, unit):
+    """Обработка ввода размера файла"""
     if message.text == 'Назад':
         process_file_format(message)
         return
     elif message.text == 'Повторить':
-        process_file_unit(message, file_format)
+        handle_navigation(message)
         return
     
     if not message.text.isdigit():
@@ -2445,7 +2523,6 @@ def process_file_size(message, file_format, unit):
     
     size = int(message.text)
     
-    # Конвертируем в байты
     if unit == 'MB (мегабайты)':
         size_bytes = size * 1024 * 1024
         unit_text = 'MB'
@@ -2464,7 +2541,6 @@ def process_file_size(message, file_format, unit):
         process_file_unit(message, file_format)
         return
     
-    # Сохраняем состояние для команды "Повторить"
     user_states[message.chat.id] = {
         'last_command': 'files_gen',
         'file_format': file_format,
@@ -2472,21 +2548,19 @@ def process_file_size(message, file_format, unit):
         'size': size
     }
     
-    # Отправляем статус
     status_msg = safe_send_message(
         chat_id=message.chat.id,
         text=f"🔄 Генерация файла {file_format} размером {size} {unit_text}...",
         reply_markup=types.ReplyKeyboardRemove()
     )
     
-    # Генерация файла с прогрессом
     generate_file_with_progress(message.chat.id, file_format, size_bytes, unit_text, size, status_msg)
 
 def generate_file_with_progress(chat_id, file_format, size_bytes, unit_text, original_size, status_msg):
     """Генерация файла с отображением прогресса"""
     timestamp = int(time.time())
     filename = f'{timestamp}-{size_bytes}-bytes{file_format}'
-    chunk_size = 1024*1024  # 1MB
+    chunk_size = 1024*1024
     progress = 0
     
     try:
@@ -2496,7 +2570,6 @@ def generate_file_with_progress(chat_id, file_format, size_bytes, unit_text, ori
                 f.write(os.urandom(chunk))
                 progress += chunk
                 
-                # Обновляем статус каждые 5MB или при завершении
                 if progress % (5*1024*1024) == 0 or progress == size_bytes:
                     percent = (progress / size_bytes) * 100
                     try:
@@ -2508,7 +2581,6 @@ def generate_file_with_progress(chat_id, file_format, size_bytes, unit_text, ori
                     except:
                         pass
         
-        # Форматирование размера для вывода
         size_formatted = '{0:,}'.format(original_size).replace(',', ' ')
         size_bytes_formatted = '{0:,}'.format(size_bytes).replace(',', ' ')
         
@@ -2540,77 +2612,69 @@ def generate_file_with_progress(chat_id, file_format, size_bytes, unit_text, ori
         if os.path.exists(filename):
             os.remove(filename)
 
-# 5. Словарик терминов (с кэшированием)
-@bot.message_handler(func=lambda m: m.text == '5️⃣ Словарик')
+# 5. Словарик терминов (обновленная версия)
+@bot.message_handler(func=lambda m: m.text == '9️⃣ Словарик')
 def handle_dictionary(message):
-    # Сохраняем состояние перед началом работы со словарём
-    user_states[message.chat.id] = {
-        'last_command': 'dictionary',
-        'step': 'waiting_term'  # Добавляем этап для ясности
-    }
+    """Обработчик словаря терминов"""
+    if message.chat.id in user_states:
+        del user_states[message.chat.id]
     
     msg = safe_send_message(
         message.chat.id,
-        "📚 <b>Словарь терминов QA</b>\nВведите термин (например: регресс, смоук ... все слова начинаются с нижнего регистра):",
+        "📚 <b>Словарь терминов QA</b>\nВведите термин (например: регресс, смоук ... все слова начинаются с нижнего регистра):\n\n"
+        "Чтобы выйти из словаря, нажмите /start или 'Назад'",
         reply_markup=types.ReplyKeyboardRemove()
     )
     if msg:
-        bot.register_next_step_handler(msg, process_term)
+        bot.register_next_step_handler(msg, process_term_continuous)
 
-def process_term(message):
+def process_term_continuous(message):
+    """Непрерывный обработчик терминов для словаря"""
     if message.text in ['Назад', '/start']:
         welcome(message)
         return
-        
+    
     term = message.text.lower()
-    definition = get_qa_definition[term]
+    definition = get_qa_definition.get(term, "Термин не найден")
     response = f"📖 <b>{term.capitalize()}:</b>\n{definition}"
     
-    # Обновляем состояние после успешной обработки
-    user_states[message.chat.id] = {
-        'last_command': 'dictionary',
-        'last_term': term,
-        'step': 'processed'  # Отмечаем, что термин был обработан
-    }
+    msg = safe_send_message(
+        message.chat.id, 
+        response,
+        reply_markup=types.ReplyKeyboardMarkup(resize_keyboard=True).add("Назад")
+    )
     
-    safe_send_message(message.chat.id, response, reply_markup=get_action_markup())
+    if msg:
+        bot.register_next_step_handler(msg, process_term_continuous)
 
-# В обработчике навигации дополняем условие для словаря
-@bot.message_handler(func=lambda m: m.text in ['Назад', 'Повторить'])
-def handle_navigation(message):
-    if message.text == 'Назад':
-        welcome(message)
-        return
-    
-    user_state = user_states.get(message.chat.id, {})
-    last_command = user_state.get('last_command')
-    
-    if not last_command:
-        safe_send_message(message.chat.id, "Не найдено предыдущее действие для повторения", reply_markup=get_action_markup())
-        return
-    
-    # Обработка повторения для словаря
-    if last_command == 'dictionary':
-        # Полностью повторяем первоначальный процесс
-        handle_dictionary(message)
-        return
-    
-# 6. Security Tools (с улучшенной обработкой ошибок)
+# 6. Security Tools
 @bot.message_handler(func=lambda m: m.text == '6️⃣ Security')
 def security_menu(message):
+    """Меню тестов безопасности"""
+    if message.text == 'Повторить':
+        handle_navigation(message)
+        return
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.row("SQL-инъекции", "XSS")
     markup.row("Path Traversal", "Команды OS")
     markup.add("Назад")
     
-    safe_send_message(
+    msg = safe_send_message(
         message.chat.id,
         "🔐 <b>Тесты безопасности</b>\nВыберите тип теста:",
         reply_markup=markup
     )
+    if msg:
+        bot.register_next_step_handler(msg, show_security_payloads)
 
 @bot.message_handler(func=lambda m: m.text in ["SQL-инъекции", "Path Traversal", "Команды OS"])
 def show_security_payloads(message):
+    """Показать примеры payload'ов"""
+    if message.text == 'Повторить':
+        handle_navigation(message)
+        return
+    
     payloads = {
         "SQL-инъекции": [
             "' OR 1=1 --",
@@ -2642,22 +2706,34 @@ def show_security_payloads(message):
         'test_type': message.text
     }
 
-# 7. API Tools (с улучшениями)
+# 7. API Tools
 @bot.message_handler(func=lambda m: m.text == '7️⃣ API Tools')
 def api_tools_menu(message):
+    """Меню инструментов API"""
+    if message.text == 'Повторить':
+        handle_navigation(message)
+        return
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.row("HTTP методы", "Коды ответа")
     markup.row("Примеры запросов", "Параметры")
     markup.add("Назад")
     
-    safe_send_message(
+    msg = safe_send_message(
         message.chat.id,
         "🔄 <b>Инструменты API</b>\nВыберите действие:",
         reply_markup=markup
     )
+    if msg:
+        bot.register_next_step_handler(msg, show_api_info)
 
 @bot.message_handler(func=lambda m: m.text in ["HTTP методы", "Коды ответа", "Примеры запросов", "Параметры"])
 def show_api_info(message):
+    """Показать информацию об API"""
+    if message.text == 'Повторить':
+        handle_navigation(message)
+        return
+    
     if message.text == "HTTP методы":
         response = (
             "📡 <b>HTTP методы:</b>\n\n"
@@ -2691,7 +2767,7 @@ def show_api_info(message):
             "    headers={'Authorization': 'Bearer token'}\n"
             ")</code>"
         )
-    else:  # Параметры
+    else:
         response = (
             "🔍 <b>Типы параметров API:</b>\n\n"
             "• <b>Query params</b> - <code>?page=1&limit=10</code>\n"
@@ -2707,23 +2783,35 @@ def show_api_info(message):
         'tool_type': message.text
     }
 
-# 8. Test Design (расширенный)
+# 8. Test Design
 @bot.message_handler(func=lambda m: m.text == '8️⃣ Test Design')
 def test_design_menu(message):
+    """Меню тест-дизайна"""
+    if message.text == 'Повторить':
+        handle_navigation(message)
+        return
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.row("Классы эквивалентности", "Pairwise")
     markup.row("Граничные значения", "Чек-лист")
     markup.row("Диаграмма состояний", "Таблица решений")
     markup.add("Назад")
     
-    safe_send_message(
+    msg = safe_send_message(
         message.chat.id,
         "🧪 <b>Методики тест-дизайна</b>\nВыберите технику:",
         reply_markup=markup
     )
+    if msg:
+        bot.register_next_step_handler(msg, show_test_design_technique)
 
 @bot.message_handler(func=lambda m: m.text in ["Классы эквивалентности", "Pairwise", "Граничные значения", "Чек-лист", "Диаграмма состояний", "Таблица решений"])
 def show_test_design_technique(message):
+    """Показать технику тест-дизайна"""
+    if message.text == 'Повторить':
+        handle_navigation(message)
+        return
+    
     techniques = {
         "Классы эквивалентности": (
             "📊 <b>Классы эквивалентности:</b>\n\n"
@@ -2793,23 +2881,35 @@ def show_test_design_technique(message):
         'technique': message.text
     }
 
-# 9. Converters (с улучшениями)
-@bot.message_handler(func=lambda m: m.text == '9️⃣ Converters')
+# 9. Converters
+@bot.message_handler(func=lambda m: m.text == '5️⃣ Converters')
 def converters_menu(message):
+    """Меню конвертеров"""
+    if message.text == 'Повторить':
+        handle_navigation(message)
+        return
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.row("JSON→XML", "XML→JSON")
     markup.row("YAML→JSON", "CSV→JSON")
     markup.row("Валидатор email", "Валидатор URL")
     markup.add("Назад")
     
-    safe_send_message(
+    msg = safe_send_message(
         message.chat.id,
         "🔄 <b>Конвертеры и валидаторы</b>\nВыберите действие:",
         reply_markup=markup
     )
+    if msg:
+        bot.register_next_step_handler(msg, handle_converter)
 
 @bot.message_handler(func=lambda m: m.text in ["JSON→XML", "XML→JSON", "YAML→JSON", "CSV→JSON", "Валидатор email", "Валидатор URL"])
 def handle_converter(message):
+    """Обработчик конвертеров и валидаторов"""
+    if message.text == 'Повторить':
+        handle_navigation(message)
+        return
+    
     if message.text in ["Валидатор email", "Валидатор URL"]:
         prompt = "Введите email для проверки" if message.text == "Валидатор email" else "Введите URL для проверки"
         msg = safe_send_message(
@@ -2821,7 +2921,6 @@ def handle_converter(message):
             bot.register_next_step_handler(msg, validate_input, message.text)
         return
     
-    # Для конвертеров просто покажем пример
     examples = {
         "JSON→XML": (
             "📤 <b>JSON в XML:</b>\n\n"
@@ -2861,15 +2960,19 @@ def handle_converter(message):
     }
 
 def validate_input(message, validator_type):
+    """Валидация email или URL"""
     if message.text in ['Назад', '/start']:
         welcome(message)
+        return
+    elif message.text == 'Повторить':
+        handle_navigation(message)
         return
     
     if validator_type == "Валидатор email":
         pattern = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
         is_valid = re.match(pattern, message.text) is not None
         response = f"Email <code>{message.text}</code> {'валиден' if is_valid else 'невалиден'}"
-    else:  # Валидатор URL
+    else:
         pattern = r'^(https?://)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*/?$'
         is_valid = re.match(pattern, message.text) is not None
         response = f"URL <code>{message.text}</code> {'валиден' if is_valid else 'невалиден'}"
@@ -2882,14 +2985,13 @@ def validate_input(message, validator_type):
         'last_input': message.text
     }
 
-# Обработка навигации с реализацией "Повторить"
 @bot.message_handler(func=lambda m: m.text in ['Назад', 'Повторить'])
 def handle_navigation(message):
+    """Обработка навигации (Назад/Повторить)"""
     if message.text == 'Назад':
         welcome(message)
         return
     
-    # Реализация "Повторить"
     user_state = user_states.get(message.chat.id, {})
     last_command = user_state.get('last_command')
     
@@ -2904,45 +3006,42 @@ def handle_navigation(message):
     if last_command == 'json_check':
         validation_type = user_state.get('validation_type')
         if validation_type:
-            types = {v: k for k, v in {'Без схемы': None, 'Схема User': 'user', 'Схема Product': 'product'}.items()}
             msg = safe_send_message(
                 message.chat.id,
-                f"Повторяем проверку JSON {f'по схеме {validation_type}' if validation_type else 'без схемы'}",
+                f"Повторяем проверку JSON по схеме {validation_type}",
                 reply_markup=types.ReplyKeyboardRemove()
             )
             if msg:
                 bot.register_next_step_handler(msg, process_json)
         else:
-            handle_json_check(message)
+            msg = safe_send_message(
+                message.chat.id,
+                "Повторяем проверку JSON без схемы",
+                reply_markup=types.ReplyKeyboardRemove()
+            )
+            if msg:
+                bot.register_next_step_handler(msg, process_json)
     
     elif last_command == 'users_gen':
         count = user_state.get('count', 1)
-        count_emoji = {1: "1️⃣", 2: "2️⃣", 5: "5️⃣", 10: "🔟"}.get(count, "1️⃣")
-        msg = safe_send_message(
-            message.chat.id,
-            f"Повторяем генерацию {count} пользователей",
-            reply_markup=types.ReplyKeyboardRemove()
-        )
-        if msg:
-            message.text = count_emoji
-            generate_users(message)
+        users = generate_fake_users(count)
+        response = f"<b>Тестовые пользователи ({count}):</b>\n<code>{json.dumps(users, indent=2, ensure_ascii=False)}</code>"
+        safe_send_message(message.chat.id, response, reply_markup=get_action_markup())
     
     elif last_command == 'card_gen':
-        card_type = user_state.get('card_type', 'visa').capitalize()
-        msg = safe_send_message(
-            message.chat.id,
-            f"Повторяем генерацию карты {card_type}",
-            reply_markup=types.ReplyKeyboardRemove()
+        card_type = user_state.get('card_type', 'visa')
+        card_info = generate_fake_card(card_type)
+        response = (
+            f"💳 <b>Тестовая карта {card_type.capitalize()}:</b>\n"
+            f"<code>{json.dumps(card_info, indent=2, ensure_ascii=False)}</code>\n\n"
+            "⚠️ <i>Только для тестовых целей!</i>"
         )
-        if msg:
-            message.text = card_type
-            generate_card(message)
+        safe_send_message(message.chat.id, response, reply_markup=get_action_markup())
     
     elif last_command == 'files_gen':
         file_format = user_state.get('file_format')
         unit = user_state.get('unit')
         size = user_state.get('size')
-        
         msg = safe_send_message(
             message.chat.id,
             f"Повторяем генерацию файла {file_format} размером {size} {unit.split()[0]}",
@@ -2953,15 +3052,38 @@ def handle_navigation(message):
             process_file_size(message, file_format, unit)
     
     elif last_command == 'dictionary':
-        term = user_state.get('last_term', 'qa')
-        msg = safe_send_message(
-            message.chat.id,
-            f"Повторяем поиск термина '{term}'",
-            reply_markup=types.ReplyKeyboardRemove()
-        )
-        if msg:
-            message.text = term
-            process_term(message)
+        handle_dictionary(message)
+    
+    elif last_command == 'security':
+        test_type = user_state.get('test_type')
+        if test_type:
+            message.text = test_type
+            show_security_payloads(message)
+    
+    elif last_command == 'api_tools':
+        tool_type = user_state.get('tool_type')
+        if tool_type:
+            message.text = tool_type
+            show_api_info(message)
+    
+    elif last_command == 'test_design':
+        technique = user_state.get('technique')
+        if technique:
+            message.text = technique
+            show_test_design_technique(message)
+    
+    elif last_command == 'converters':
+        converter_type = user_state.get('converter_type')
+        if converter_type:
+            message.text = converter_type
+            handle_converter(message)
+    
+    elif last_command == 'validator':
+        validator_type = user_state.get('validator_type')
+        last_input = user_state.get('last_input')
+        if validator_type and last_input:
+            message.text = last_input
+            validate_input(message, validator_type)
     
     else:
         safe_send_message(
@@ -2969,7 +3091,6 @@ def handle_navigation(message):
             "Предыдущее действие не поддерживает повторение",
             reply_markup=get_action_markup()
         )
-
 
 # Обработчик ошибок
 @bot.message_handler(func=lambda message: True)
@@ -2987,7 +3108,7 @@ if __name__ == '__main__':
         while True:
             try:
                 bot.infinity_polling()
-                break  # Если поллинг завершился нормально
+                break
             except Exception as e:
                 logger.error(f"Ошибка в основном цикле: {e}")
                 time.sleep(5)
@@ -2997,5 +3118,3 @@ if __name__ == '__main__':
         logger.error(f"Критическая ошибка: {e}")
     finally:
         logger.info("Бот завершает работу")
-        
-        
