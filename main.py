@@ -2656,7 +2656,7 @@ def security_menu(message):
         return
     
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.row("SQL-инъекции", "XSS")
+    markup.row("SQL-инъекции")
     markup.row("Path Traversal", "Команды OS")
     markup.add("Назад")
     
